@@ -17,6 +17,9 @@ import csv
 import time
 import argparse
 import json
+import smtplib
+import sqlite3
+from email.message import EmailMessage
 from datetime import datetime
 
 import requests
@@ -260,6 +263,83 @@ def write_snapshot_to_db(rows: list[dict], snapshot_ts: str, url: str) -> bool:
         print(f"Warning: could not write DB snapshot: {exc}", file=sys.stderr)
         return False
 
+def _env_or_arg(val, env_key: str):
+    return val if val is not None else os.environ.get(env_key)
+
+def send_email_alert(subject: str, body: str, smtp_host: str, smtp_port: int, smtp_user: str | None,
+                     smtp_pass: str | None, smtp_from: str, smtp_to: str, starttls: bool = True) -> None:
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = smtp_from
+    msg["To"] = smtp_to
+    msg.set_content(body)
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+        if starttls:
+            server.starttls()
+        if smtp_user and smtp_pass:
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
+
+def ensure_alerts_schema(db_path: str) -> None:
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                threshold REAL NOT NULL,
+                email_to TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS alert_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_id INTEGER NOT NULL,
+                triggered_at TEXT NOT NULL,
+                price REAL NOT NULL,
+                term_months INTEGER,
+                supplier TEXT,
+                message TEXT,
+                FOREIGN KEY(alert_id) REFERENCES alerts(id)
+            )
+            """
+        )
+        conn.commit()
+
+def load_alerts(db_path: str) -> list[dict]:
+    if not db_path or not os.path.exists(db_path):
+        return []
+    ensure_alerts_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, name, threshold, email_to, active FROM alerts WHERE active = 1 ORDER BY id DESC"
+        )
+        rows = cur.fetchall()
+    return [dict(r) for r in rows]
+
+def record_alert_history(db_path: str, alert_id: int, triggered_at: str, price: float,
+                         term_months: int | None, supplier: str, message: str) -> None:
+    if not db_path:
+        return
+    ensure_alerts_schema(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO alert_history (alert_id, triggered_at, price, term_months, supplier, message)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (alert_id, triggered_at, price, term_months, supplier, message),
+        )
+        conn.commit()
+
 # ---------- main ----------
 def main():
     ap = argparse.ArgumentParser(description="Find the lowest qualifying (Fixed, no ETF, no monthly fee) electric rate on Ohio Apples to Apples.")
@@ -268,6 +348,21 @@ def main():
     ap.add_argument("--no-csv", action="store_true", help="Disable CSV output (use DB only).")
     ap.add_argument("--json", action="store_true", help="Print JSON for the best offer.")
     ap.add_argument("--top", type=int, default=5, help="Also print top N qualifying offers.")
+    ap.add_argument(
+        "--alert-below",
+        type=float,
+        default=None,
+        help="Alert if the best price for any term falls below this $/kWh value.",
+    )
+    ap.add_argument("--smtp-host", default=None, help="SMTP host for alerts. Env: ALERT_SMTP_HOST")
+    ap.add_argument("--smtp-port", type=int, default=None, help="SMTP port. Env: ALERT_SMTP_PORT (default 587)")
+    ap.add_argument("--smtp-user", default=None, help="SMTP username. Env: ALERT_SMTP_USER")
+    ap.add_argument("--smtp-pass", default=None, help="SMTP password. Env: ALERT_SMTP_PASS")
+    ap.add_argument("--smtp-from", default=None, help="SMTP from address. Env: ALERT_SMTP_FROM")
+    ap.add_argument("--smtp-to", default=None, help="SMTP to address. Env: ALERT_SMTP_TO")
+    ap.add_argument("--alerts-db", default=None, help="SQLite alerts DB path. Env: ALERTS_DB")
+    ap.add_argument("--smtp-starttls", action="store_true", help="Enable STARTTLS (default).")
+    ap.add_argument("--no-smtp-starttls", action="store_true", help="Disable STARTTLS.")
     ap.add_argument("--insecure", action="store_true", help="Skip TLS certificate verification.")
     args = ap.parse_args()
 
@@ -307,6 +402,114 @@ def main():
         term_row["selection_type"] = "term_best"
         db_rows.append(term_row)
     db_written = write_snapshot_to_db(db_rows, ts, args.url)
+
+    if args.alert_below is not None and best_per_term:
+        # Alert when any term's best price drops below the threshold.
+        tripped = [r for r in best_per_term if r["price_dollars_per_kwh"] < args.alert_below]
+        if tripped:
+            lines = []
+            for r in sorted(tripped, key=lambda x: (x["price_dollars_per_kwh"], x.get("term_months") or 0)):
+                t = f"{r['term_months']} mo" if r["term_months"] else "n/a"
+                lines.append(
+                    f"${r['price_dollars_per_kwh']:.4f}/kWh below ${args.alert_below:.4f} "
+                    f"for term {t} - {r['supplier']}"
+                )
+            for line in lines:
+                print(f"ALERT: {line}")
+
+            smtp_host = _env_or_arg(args.smtp_host, "ALERT_SMTP_HOST")
+            smtp_port = int(_env_or_arg(args.smtp_port, "ALERT_SMTP_PORT") or 587)
+            smtp_user = _env_or_arg(args.smtp_user, "ALERT_SMTP_USER")
+            smtp_pass = _env_or_arg(args.smtp_pass, "ALERT_SMTP_PASS")
+            smtp_from = _env_or_arg(args.smtp_from, "ALERT_SMTP_FROM")
+            smtp_to = _env_or_arg(args.smtp_to, "ALERT_SMTP_TO")
+            starttls = True
+            if args.no_smtp_starttls:
+                starttls = False
+            elif args.smtp_starttls:
+                starttls = True
+
+            if smtp_host and smtp_from and smtp_to:
+                subject = "Apples to Apples rate alert"
+                body = "Alert triggered:\n" + "\n".join(lines)
+                try:
+                    send_email_alert(
+                        subject,
+                        body,
+                        smtp_host,
+                        smtp_port,
+                        smtp_user,
+                        smtp_pass,
+                        smtp_from,
+                        smtp_to,
+                        starttls=starttls,
+                    )
+                    print(f"Email alert sent to {smtp_to}.")
+                except Exception as exc:
+                    print(f"Warning: failed to send email alert: {exc}", file=sys.stderr)
+            else:
+                print("Warning: alert triggered but SMTP is not fully configured.", file=sys.stderr)
+
+    alerts_db = _env_or_arg(args.alerts_db, "ALERTS_DB")
+    if alerts_db:
+        alerts = load_alerts(alerts_db)
+        if alerts and best_per_term:
+            smtp_host = _env_or_arg(args.smtp_host, "ALERT_SMTP_HOST")
+            smtp_port = int(_env_or_arg(args.smtp_port, "ALERT_SMTP_PORT") or 587)
+            smtp_user = _env_or_arg(args.smtp_user, "ALERT_SMTP_USER")
+            smtp_pass = _env_or_arg(args.smtp_pass, "ALERT_SMTP_PASS")
+            smtp_from = _env_or_arg(args.smtp_from, "ALERT_SMTP_FROM")
+            starttls = True
+            if args.no_smtp_starttls:
+                starttls = False
+            elif args.smtp_starttls:
+                starttls = True
+
+            for alert in alerts:
+                threshold = alert["threshold"]
+                tripped = [r for r in best_per_term if r["price_dollars_per_kwh"] < threshold]
+                if not tripped:
+                    continue
+                lines = []
+                for r in sorted(tripped, key=lambda x: (x["price_dollars_per_kwh"], x.get("term_months") or 0)):
+                    t = f"{r['term_months']} mo" if r["term_months"] else "n/a"
+                    msg = f"${r['price_dollars_per_kwh']:.4f}/kWh below ${threshold:.4f} for term {t} - {r['supplier']}"
+                    lines.append(msg)
+                    record_alert_history(
+                        alerts_db,
+                        alert["id"],
+                        ts,
+                        r["price_dollars_per_kwh"],
+                        r["term_months"],
+                        r.get("supplier", ""),
+                        msg,
+                    )
+                for line in lines:
+                    print(f"ALERT: {line}")
+
+                if smtp_host and smtp_from and alert.get("email_to"):
+                    subject = f"Apples to Apples rate alert: {alert['name']}"
+                    body = "Alert triggered:\n" + "\n".join(lines)
+                    try:
+                        send_email_alert(
+                            subject,
+                            body,
+                            smtp_host,
+                            smtp_port,
+                            smtp_user,
+                            smtp_pass,
+                            smtp_from,
+                            alert["email_to"],
+                            starttls=starttls,
+                        )
+                        print(f"Email alert sent to {alert['email_to']} for '{alert['name']}'.")
+                    except Exception as exc:
+                        print(f"Warning: failed to send email alert for '{alert['name']}': {exc}", file=sys.stderr)
+                else:
+                    print(
+                        f"Warning: alert '{alert['name']}' triggered but SMTP is not fully configured.",
+                        file=sys.stderr,
+                    )
 
     # Append snapshot to CSV
     if not args.no_csv:

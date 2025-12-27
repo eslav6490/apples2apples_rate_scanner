@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Apples to Apples Alerts</title>
+    <style>
+      :root {
+        --bg: #f4f1ed;
+        --panel: #ffffff;
+        --ink: #1f1f1f;
+        --muted: #6b6b6b;
+        --accent: #1f6feb;
+        --danger: #b91c1c;
+        --success: #1f7a4f;
+        --border: #e2ddd6;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+      }
+      header {
+        padding: 24px 32px;
+        background: linear-gradient(120deg, #fef6e4, #f9e9d9);
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 {
+        margin: 0 0 6px 0;
+        font-size: 26px;
+      }
+      header p { margin: 0; color: var(--muted); }
+      nav {
+        margin-top: 10px;
+      }
+      nav a {
+        margin-right: 16px;
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+      }
+      main {
+        padding: 24px 32px 48px;
+        max-width: 1100px;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      input[type="text"],
+      input[type="number"],
+      input[type="email"],
+      select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 14px;
+        background: #fff;
+      }
+      .actions {
+        margin-top: 12px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      button {
+        border: 0;
+        padding: 10px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .btn-primary { background: var(--accent); color: #fff; }
+      .btn-outline {
+        background: transparent;
+        border: 1px solid var(--border);
+      }
+      .btn-danger { background: var(--danger); color: #fff; }
+      a.btn-outline, a.btn-primary, a.btn-danger {
+        text-decoration: none;
+        display: inline-block;
+        color: inherit;
+      }
+      .muted { color: var(--muted); }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th, td {
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+      }
+      th { color: var(--muted); font-weight: 600; }
+      .flash {
+        padding: 10px 12px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        border: 1px solid var(--border);
+      }
+      .flash.success { border-color: #c2e5d6; background: #edf8f3; color: var(--success); }
+      .flash.error { border-color: #f2c7c7; background: #fbefef; color: var(--danger); }
+      footer { color: var(--muted); font-size: 12px; padding: 0 32px 24px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Apples to Apples Alerts</h1>
+      <p>Configure rate alerts and review when they triggered.</p>
+      <nav>
+        <a href="{{ url_for('index') }}">Alerts</a>
+        <a href="{{ url_for('history') }}">History</a>
+      </nav>
+    </header>
+    <main>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+    <footer>DB: {{ config.get("ALERTS_DB", "alerts.db") }}</footer>
+  </body>
+</html>

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="panel">
+    <h2>Alert history</h2>
+    <form method="get" action="{{ url_for('history') }}">
+      <div class="grid">
+        <div>
+          <label for="alert_id">Filter by alert</label>
+          <select id="alert_id" name="alert_id">
+            <option value="">All alerts</option>
+            {% for a in alerts %}
+              <option value="{{ a.id }}" {% if selected_alert_id and selected_alert_id|int == a.id %}selected{% endif %}>
+                {{ a.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn-outline" type="submit">Filter</button>
+        <a class="btn-outline" href="{{ url_for('history') }}">Clear</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    {% if rows %}
+      <table>
+        <thead>
+          <tr>
+            <th>Triggered</th>
+            <th>Alert</th>
+            <th>Price</th>
+            <th>Term</th>
+            <th>Supplier</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.triggered_at }}</td>
+              <td>{{ r.name }}</td>
+              <td>${{ "%.4f"|format(r.price) }}/kWh</td>
+              <td>{{ r.term_months or "n/a" }}</td>
+              <td>{{ r.supplier }}</td>
+              <td>{{ r.message }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No alerts have triggered yet.</p>
+    {% endif %}
+  </div>
+{% endblock %}

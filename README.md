@@ -14,7 +14,7 @@ Data can be written to PostgreSQL and/or CSV.
 ```bash
 python3 -m venv venv
 ./venv/bin/pip install --upgrade pip
-./venv/bin/pip install requests beautifulsoup4 lxml psycopg2-binary
+./venv/bin/pip install requests beautifulsoup4 lxml psycopg2-binary flask
 ```
 
 ## Database
@@ -45,6 +45,29 @@ Disable CSV output (DB only):
 ```
 
 By default CSV is written to `apples_to_apples_snapshot_v2.csv`.
+
+## Alerts web app
+Configure alert thresholds and view alert history locally.
+
+Start the app:
+```bash
+export ALERTS_DB=alerts.db
+./venv/bin/python app.py
+```
+
+Open `http://127.0.0.1:5000` to add alerts and review history.
+
+## Alerts from the scraper
+Use the alerts database to trigger alerts and record history:
+```bash
+export ALERTS_DB=alerts.db
+export ALERT_SMTP_HOST=smtp.example.com
+export ALERT_SMTP_PORT=587
+export ALERT_SMTP_USER=you@example.com
+export ALERT_SMTP_PASS=your_password
+export ALERT_SMTP_FROM=you@example.com
+./venv/bin/python apples_v2.py --alerts-db alerts.db
+```
 
 ## Selection types
 Rows are tagged as:

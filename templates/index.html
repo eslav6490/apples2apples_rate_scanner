@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="panel">
+    <h2>Create alert</h2>
+    <form method="post" action="{{ url_for('create_alert') }}">
+      <div class="grid">
+        <div>
+          <label for="name">Name</label>
+          <input id="name" name="name" type="text" placeholder="Cheapest any-term below 6.5 cents" required />
+        </div>
+        <div>
+          <label for="threshold">Threshold ($/kWh)</label>
+          <input id="threshold" name="threshold" type="number" step="0.0001" min="0" placeholder="0.0650" required />
+        </div>
+        <div>
+          <label for="email_to">Email</label>
+          <input id="email_to" name="email_to" type="email" placeholder="you@example.com" required />
+        </div>
+        <div>
+          <label for="active">Active</label>
+          <input id="active" name="active" type="checkbox" checked />
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" type="submit">Save alert</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Saved alerts</h2>
+    {% if alerts %}
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Threshold</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in alerts %}
+            <tr>
+              <td>{{ a.name }}</td>
+              <td>${{ "%.4f"|format(a.threshold) }}/kWh</td>
+              <td>{{ a.email_to }}</td>
+              <td>{{ "Active" if a.active else "Paused" }}</td>
+              <td>{{ a.created_at }}</td>
+              <td>
+                <form method="post" action="{{ url_for('toggle_alert', alert_id=a.id) }}" style="display:inline;">
+                  <button class="btn-outline" type="submit">{{ "Pause" if a.active else "Activate" }}</button>
+                </form>
+                <form method="post" action="{{ url_for('delete_alert', alert_id=a.id) }}" style="display:inline;">
+                  <button class="btn-danger" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No alerts yet.</p>
+    {% endif %}
+  </div>
+{% endblock %}
