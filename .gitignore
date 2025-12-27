@@ -12,6 +12,7 @@ venv/
 *.csv
 *.log
 alerts.db
+.env
 
 # OS
 .DS_Store

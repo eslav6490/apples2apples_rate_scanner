@@ -5,6 +5,23 @@ import smtplib
 from datetime import datetime
 from email.message import EmailMessage
 
+def load_dotenv(path: str = ".env") -> None:
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+
+
+load_dotenv()
+
 from flask import Flask, render_template, request, redirect, url_for, flash
 
 APP_SECRET = os.environ.get("FLASK_SECRET_KEY", "dev")

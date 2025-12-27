@@ -51,6 +51,7 @@ Configure alert thresholds and view alert history locally.
 
 Start the app:
 ```bash
+cp .env.example .env
 export ALERTS_DB=alerts.db
 ./venv/bin/python app.py
 ```
@@ -60,6 +61,7 @@ Open `http://127.0.0.1:5000` to add alerts and review history.
 ## Alerts from the scraper
 Use the alerts database to trigger alerts and record history:
 ```bash
+cp .env.example .env
 export ALERTS_DB=alerts.db
 export ALERT_SMTP_HOST=smtp.example.com
 export ALERT_SMTP_PORT=587
@@ -77,6 +79,7 @@ Term qualifiers (optional) for alerts:
 
 Test alert emails:
 ```bash
+cp .env.example .env
 export ALERT_SMTP_HOST=smtp.example.com
 export ALERT_SMTP_PORT=587
 export ALERT_SMTP_USER=you@example.com

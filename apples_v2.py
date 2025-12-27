@@ -39,6 +39,23 @@ DEFAULT_DBNAME = "apples_db"
 DEFAULT_DBHOST = "localhost"
 DEFAULT_DBPORT = "5432"
 
+def load_dotenv(path: str = ".env") -> None:
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+
+
+load_dotenv()
+
 # ---------- HTTP ----------
 def fetch_html(url: str, retries: int = 3, timeout: int = 25, verify: bool = True) -> str:
     headers = {
