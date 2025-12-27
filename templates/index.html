@@ -17,6 +17,11 @@
           <input id="email_to" name="email_to" type="email" placeholder="you@example.com" required />
         </div>
         <div>
+          <label for="term_expr">Term qualifier (optional)</label>
+          <input id="term_expr" name="term_expr" type="text" placeholder="12+, 12-24, 3, >=6" />
+          <div class="muted">Examples: 12+ months, 12-24 months, 3 months exactly.</div>
+        </div>
+        <div>
           <label for="active">Active</label>
           <input id="active" name="active" type="checkbox" checked />
         </div>
@@ -36,6 +41,7 @@
             <th>Name</th>
             <th>Threshold</th>
             <th>Email</th>
+            <th>Term</th>
             <th>Status</th>
             <th>Created</th>
             <th>Actions</th>
@@ -47,11 +53,15 @@
               <td>{{ a.name }}</td>
               <td>${{ "%.4f"|format(a.threshold) }}/kWh</td>
               <td>{{ a.email_to }}</td>
+              <td>{{ a.term_expr or "Any" }}</td>
               <td>{{ "Active" if a.active else "Paused" }}</td>
               <td>{{ a.created_at }}</td>
               <td>
                 <form method="post" action="{{ url_for('toggle_alert', alert_id=a.id) }}" style="display:inline;">
                   <button class="btn-outline" type="submit">{{ "Pause" if a.active else "Activate" }}</button>
+                </form>
+                <form method="post" action="{{ url_for('test_alert', alert_id=a.id) }}" style="display:inline;">
+                  <button class="btn-outline" type="submit">Test</button>
                 </form>
                 <form method="post" action="{{ url_for('delete_alert', alert_id=a.id) }}" style="display:inline;">
                   <button class="btn-danger" type="submit">Delete</button>

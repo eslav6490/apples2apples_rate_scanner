@@ -290,6 +290,7 @@ def ensure_alerts_schema(db_path: str) -> None:
                 name TEXT NOT NULL,
                 threshold REAL NOT NULL,
                 email_to TEXT NOT NULL,
+                term_expr TEXT,
                 active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             )
@@ -309,6 +310,10 @@ def ensure_alerts_schema(db_path: str) -> None:
             )
             """
         )
+        cur.execute("PRAGMA table_info(alerts)")
+        cols = {row[1] for row in cur.fetchall()}
+        if "term_expr" not in cols:
+            cur.execute("ALTER TABLE alerts ADD COLUMN term_expr TEXT")
         conn.commit()
 
 def load_alerts(db_path: str) -> list[dict]:
@@ -319,7 +324,7 @@ def load_alerts(db_path: str) -> list[dict]:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, name, threshold, email_to, active FROM alerts WHERE active = 1 ORDER BY id DESC"
+            "SELECT id, name, threshold, email_to, term_expr, active FROM alerts WHERE active = 1 ORDER BY id DESC"
         )
         rows = cur.fetchall()
     return [dict(r) for r in rows]
@@ -339,6 +344,59 @@ def record_alert_history(db_path: str, alert_id: int, triggered_at: str, price: 
             (alert_id, triggered_at, price, term_months, supplier, message),
         )
         conn.commit()
+
+def parse_term_expression(expr: str) -> tuple[float | None, float | None]:
+    expr = (expr or "").strip().lower()
+    if not expr:
+        return None, None
+
+    cleaned = expr.replace("months", "").replace("month", "").replace("mos", "").replace("mo", "")
+    cleaned = cleaned.replace("to", "-")
+    cleaned = cleaned.replace(" ", "")
+
+    if cleaned.startswith((">=", "<=", ">", "<")):
+        op = cleaned[:2] if cleaned[:2] in {">=", "<="} else cleaned[:1]
+        val_str = cleaned[len(op):]
+        val = float(val_str)
+        if op == ">=":
+            return val, None
+        if op == ">":
+            return val + 1e-9, None
+        if op == "<=":
+            return None, val
+        if op == "<":
+            return None, val - 1e-9
+
+    if cleaned.endswith("+"):
+        val = float(cleaned[:-1])
+        return val, None
+
+    if "-" in cleaned:
+        lo, hi = cleaned.split("-", 1)
+        return float(lo), float(hi)
+
+    if cleaned.startswith(("=", "==")):
+        val = float(cleaned.lstrip("="))
+        return val, val
+
+    if "exact" in expr:
+        val = float(cleaned.replace("exactly", "").replace("exact", ""))
+        return val, val
+
+    val = float(cleaned)
+    return val, val
+
+def term_matches(term_months: int | None, term_expr: str | None) -> bool:
+    if not term_expr:
+        return True
+    if term_months is None:
+        return False
+    min_val, max_val = parse_term_expression(term_expr)
+    if min_val is not None and term_months < min_val:
+        return False
+    if max_val is not None and term_months > max_val:
+        return False
+    return True
 
 # ---------- main ----------
 def main():
@@ -467,7 +525,18 @@ def main():
 
             for alert in alerts:
                 threshold = alert["threshold"]
-                tripped = [r for r in best_per_term if r["price_dollars_per_kwh"] < threshold]
+                term_expr = (alert.get("term_expr") or "").strip()
+                try:
+                    tripped = [
+                        r for r in best_per_term
+                        if r["price_dollars_per_kwh"] < threshold and term_matches(r.get("term_months"), term_expr)
+                    ]
+                except Exception as exc:
+                    print(
+                        f"Warning: alert '{alert['name']}' has invalid term qualifier '{term_expr}': {exc}",
+                        file=sys.stderr,
+                    )
+                    continue
                 if not tripped:
                     continue
                 lines = []

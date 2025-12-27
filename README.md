@@ -69,6 +69,23 @@ export ALERT_SMTP_FROM=you@example.com
 ./venv/bin/python apples_v2.py --alerts-db alerts.db
 ```
 
+Term qualifiers (optional) for alerts:
+- `12+` (12 months or longer)
+- `12-24` (between 12 and 24 months)
+- `3` or `3 months exactly`
+- `>=6` or `<=24`
+
+Test alert emails:
+```bash
+export ALERT_SMTP_HOST=smtp.example.com
+export ALERT_SMTP_PORT=587
+export ALERT_SMTP_USER=you@example.com
+export ALERT_SMTP_PASS=your_password
+export ALERT_SMTP_FROM=you@example.com
+export ALERT_SMTP_STARTTLS=1
+```
+Then click the “Test” button next to an alert in the web app.
+
 ## Selection types
 Rows are tagged as:
 - `overall`: cheapest qualifying offer across all terms
